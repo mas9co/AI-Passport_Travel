@@ -1,0 +1,66 @@
+name: Build Android APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 下載程式碼
+        uses: actions/checkout@v4
+
+      - name: 安裝 Java 環境
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: 判斷專案類型
+        id: check
+        run: |
+          if [ -f "apps/ai-guide-companion/pubspec.yaml" ]; then
+            echo "type=flutter" >> $GITHUB_OUTPUT
+          else
+            echo "type=react-native" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 安裝 Flutter
+        if: steps.check.outputs.type == 'flutter'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: 編譯 Flutter APK
+        if: steps.check.outputs.type == 'flutter'
+        run: |
+          cd apps/ai-guide-companion
+          flutter pub get
+          flutter build apk --release
+          mkdir -p $GITHUB_WORKSPACE/output_apk
+          cp build/app/outputs/flutter-apk/*.apk $GITHUB_WORKSPACE/output_apk/
+
+      - name: 安裝 Node.js
+        if: steps.check.outputs.type == 'react-native'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: 編譯 React Native APK
+        if: steps.check.outputs.type == 'react-native'
+        run: |
+          cd apps/ai-guide-companion
+          npm install
+          if [ -d "android" ]; then
+            cd android
+            chmod +x gradlew
+            ./gradlew assembleRelease
+            mkdir -p $GITHUB_WORKSPACE/output_apk
+            cp app/build/outputs/apk/release/*.apk $GITHUB_WORKSPACE/output_apk/
+          fi
+
+      - name: 上傳打包好的 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-APK
+          path: output_apk/*.apk
